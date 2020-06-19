@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useHistory } from "react-router-dom";
 
 import Input from "../../shared/components/FormElements/Input";
 import Button from "../../shared/components/FormElements/Button";
+import ErrorModal from "../../shared/components/UI/ErrorModal";
+import LoadingSpinner from "../../shared/components/UI/LoadingSpinner";
 import {
   VALIDATOR_REQUIRE,
   VALIDATOR_MINLENGTH,
@@ -12,38 +14,12 @@ import Card from "../../shared/components/UI/Card";
 
 import "./PlaceForm.css";
 
-const DUMMY_PLACES = [
-  {
-    id: "p1",
-    title: "EMPIRE STATE BUILDING",
-    description: "One of the most famous skycrapers in the world",
-    imageUrl:
-      "https://upload.wikimedia.org/wikipedia/commons/c/c7/Empire_State_Building_from_the_Top_of_the_Rock.jpg",
-    address: "20 W 34th St, New York, NY 10001",
-    location: {
-      lat: 40.7484405,
-      lng: -73.9878584,
-    },
-    creator: "u1",
-  },
-  {
-    id: "p2",
-    title: "EMP. STATE BUILDING",
-    description: "One of the most famous skycrapers in the world",
-    imageUrl:
-      "https://upload.wikimedia.org/wikipedia/commons/c/c7/Empire_State_Building_from_the_Top_of_the_Rock.jpg",
-    address: "20 W 34th St, New York, NY 10001",
-    location: {
-      lat: 40.7484405,
-      lng: -73.9878584,
-    },
-    creator: "u2",
-  },
-];
-
 const UpdatePlace = () => {
   const [isLoading, setIsLoading] = useState(true);
+  const [identifiedPlace, setIdentifiedPlace] = useState([]);
+  const [error, setError] = useState(null);
   const placeId = useParams().placeId;
+  const history = useHistory();
 
   const [formState, inputHandler, setFormData] = useForm(
     {
@@ -59,7 +35,30 @@ const UpdatePlace = () => {
     true
   );
 
-  const identifiedPlace = DUMMY_PLACES.find((p) => p.id === placeId);
+  useEffect(() => {
+    const fetchPlace = async () => {
+      setIsLoading(true);
+      try {
+        setError(null);
+        const response = await fetch(
+          `http://localhost:5000/api/places/${placeId}`
+        );
+
+        const responseData = await response.json();
+
+        if (!response.ok) {
+          throw new Error(responseData.message);
+        }
+
+        setIsLoading(false);
+        setIdentifiedPlace(responseData.place);
+      } catch (err) {
+        setIsLoading(false);
+        setError(err.message || "Something went wrong, please try again.");
+      }
+    };
+    fetchPlace();
+  }, [placeId]);
 
   useEffect(() => {
     if (identifiedPlace) {
@@ -80,12 +79,54 @@ const UpdatePlace = () => {
     setIsLoading(false);
   }, [setFormData, identifiedPlace]);
 
-  const placeUpdateSubmitHandler = (e) => {
+  const placeUpdateSubmitHandler = async (e) => {
     e.preventDefault();
     console.log(formState.inputs);
+
+    setIsLoading(true);
+    try {
+      setError(null);
+      const response = await fetch(
+        `http://localhost:5000/api/places/${placeId}`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            title: formState.inputs.title.value,
+            description: formState.inputs.description.value,
+          }),
+        }
+      );
+
+      const responseData = await response.json();
+
+      if (!response.ok) {
+        throw new Error(responseData.message);
+      }
+
+      setIsLoading(false);
+      history.goBack();
+    } catch (err) {
+      setIsLoading(false);
+      setError(err.message || "Something went wrong, please try again.");
+    }
   };
 
-  if (!identifiedPlace) {
+  const handleError = () => {
+    setError(null);
+  };
+
+  if (isLoading) {
+    return (
+      <div className="center">
+        <LoadingSpinner />
+      </div>
+    );
+  }
+
+  if (!identifiedPlace && !error) {
     return (
       <div className="center">
         <Card>
@@ -95,41 +136,38 @@ const UpdatePlace = () => {
     );
   }
 
-  if (isLoading) {
-    return (
-      <div className="center">
-        <h2>Loading...</h2>
-      </div>
-    );
-  }
-
   return (
-    <form className="place-form" onSubmit={placeUpdateSubmitHandler}>
-      <Input
-        id="title"
-        element="input"
-        type="text"
-        label="Title"
-        validators={[VALIDATOR_REQUIRE()]}
-        errorText="Please enter a valid title."
-        onInput={inputHandler}
-        initialValue={formState.inputs.title.value}
-        initialValid={formState.inputs.title.isValid}
-      />
-      <Input
-        id="description"
-        element="textarea"
-        label="Description"
-        validators={[VALIDATOR_MINLENGTH(5)]}
-        errorText="Please enter a valid description (min. 5 characters)."
-        onInput={inputHandler}
-        initialValue={formState.inputs.description.value}
-        initialValid={formState.inputs.description.isValid}
-      />
-      <Button type="submit" disabled={!formState.isValid}>
-        UPDATE PLACE
-      </Button>
-    </form>
+    <>
+      <ErrorModal error={error} onClear={handleError} />
+      {!isLoading && identifiedPlace && (
+        <form className="place-form" onSubmit={placeUpdateSubmitHandler}>
+          <Input
+            id="title"
+            element="input"
+            type="text"
+            label="Title"
+            validators={[VALIDATOR_REQUIRE()]}
+            errorText="Please enter a valid title."
+            onInput={inputHandler}
+            initialValue={identifiedPlace.title}
+            initialValid={true}
+          />
+          <Input
+            id="description"
+            element="textarea"
+            label="Description"
+            validators={[VALIDATOR_MINLENGTH(5)]}
+            errorText="Please enter a valid description (min. 5 characters)."
+            onInput={inputHandler}
+            initialValue={identifiedPlace.description}
+            initialValid={true}
+          />
+          <Button type="submit" disabled={!formState.isValid}>
+            UPDATE PLACE
+          </Button>
+        </form>
+      )}
+    </>
   );
 };
 
